@@ -8,18 +8,17 @@ from ..preference.AddonPreferences import ExampleAddonPreferences
 
 
 # This Example Operator will scale up the selected object
-class ExampleOperator(bpy.types.Operator):
+class GetSelectVertexOperator(bpy.types.Operator):
     '''ExampleAddon'''
-    bl_idname = "object.get_select_center"
-    bl_label = "GetSelectCenter"
+    bl_idname = "object.get_select_vertex"
+    bl_label = "GetSelectVertex"
 
     bl_options = {'REGISTER', 'UNDO'}
 
-    select_center_position = []
-
     @classmethod
     def poll(cls, context: bpy.types.Context):
-        return context.active_object is not None
+        return (context.active_object is not None and
+                context.active_object.mode == 'EDIT')
 
     def execute(self, context: bpy.types.Context):
         addon_prefs = bpy.context.preferences.addons[__addon_name__].preferences
@@ -49,7 +48,23 @@ class ExampleOperator(bpy.types.Operator):
         centers = list(context.scene['selection_centers'])
         centers.append((center.x, center.y, center.z))
         context.scene['selection_centers'] = centers
+        context.scene['selected_vertex_count'] = len(centers)
+        return {'FINISHED'}
 
+class CancelSelectVertexOperator(bpy.types.Operator):
+    '''ExampleAddon'''
+    bl_idname = "object.cancel_select_vertex"
+    bl_label = "CancelSelectVertex"
+
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context):
+        return context.scene.selected_vertex_count != 0
+
+    def execute(self, context: bpy.types.Context):
+        context.scene['selection_centers'] = []
+        context.scene['selected_vertex_count'] = 0
         return {'FINISHED'}
 
 class GenerateBonesOperator(bpy.types.Operator):
@@ -61,7 +76,7 @@ class GenerateBonesOperator(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context: bpy.types.Context):
-        return context.active_object is not None
+        return context.scene.selected_vertex_count >= 2
 
     def execute(self, context: bpy.types.Context):
         # get select centers
