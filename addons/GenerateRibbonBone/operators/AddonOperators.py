@@ -111,12 +111,10 @@ class GenerateBonesOperator(bpy.types.Operator):
             bone.head = centers[i]
             bone.tail = centers[i + 1]
             bone.parent = bone_prev
+            bone.use_connect = True
             bones.append(bone)
             bone_prev = bone
         bpy.ops.object.mode_set(mode='OBJECT')
-
-        # clear selection_centers
-        context.scene['selection_centers'] = []
         return {'FINISHED'}
 
 
@@ -158,11 +156,13 @@ class AssignWeightOperator(bpy.types.Operator):
             bone_kd.insert(target_armature.matrix_world @ bone.head_local, i)
         bone_kd.balance()
 
-        for vg in obj.vertex_groups:
-            if vg.name in [bone.name for bone in bones]:
-                for vert in bm.verts:
-                    if vg.index in vert[deform_layer]:
-                        del vert[deform_layer][vg.index]
+        # remove bone weight
+        bone_names = {bone.name for bone in bones}
+        for vert in selected_verts:
+            for vg_idx in list(vert[deform_layer].keys()):
+                vg_name = obj.vertex_groups[vg_idx].name
+                if vg_name in bone_names:
+                    del vert[deform_layer][vg_idx]
 
         for vert in selected_verts:
             world_co = obj.matrix_world @ vert.co
@@ -180,7 +180,9 @@ class AssignWeightOperator(bpy.types.Operator):
                 vg = obj.vertex_groups.get(vg_name)
                 if not vg:
                     vg = obj.vertex_groups.new(name=vg_name)
-                if b_idx == len(bones) - 1 and fac > 0.5:
+                if b_idx == 0 and fac < 0.5:  # 起始骨骼的头部区域
+                    weight = 1.0
+                elif b_idx == len(bones) - 1 and fac > 0.5:  # 末端骨骼的尾部区域
                     weight = 1.0
                 else:
                     x = abs(fac - 0.5)
