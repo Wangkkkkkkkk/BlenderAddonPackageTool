@@ -1,4 +1,5 @@
 import bpy
+from bpy.props import PointerProperty
 
 from .config import __addon_name__
 from .i18n.dictionary import dictionary
@@ -6,6 +7,8 @@ from ...common.class_loader import auto_load
 from ...common.class_loader.auto_load import add_properties, remove_properties
 from ...common.i18n.dictionary import common_dictionary
 from ...common.i18n.i18n import load_dictionary
+
+from .panels.AddonPanels import ArmatureSelectorProperties
 
 # Add-on info
 bl_info = {
@@ -43,6 +46,8 @@ def register():
     load_dictionary(dictionary)
     bpy.app.translations.register(__addon_name__, common_dictionary)
 
+    bpy.types.Scene.armature_select_props = PointerProperty(type=ArmatureSelectorProperties)
+
     print("{} addon is installed.".format(__addon_name__))
 
 
@@ -53,3 +58,5 @@ def unregister():
     auto_load.unregister()
     remove_properties(_addon_properties)
     print("{} addon is uninstalled.".format(__addon_name__))
+
+    del bpy.types.Scene.armature_select_props

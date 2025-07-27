@@ -299,3 +299,61 @@ class RefineArmatureOperator(bpy.types.Operator):
             self.remove_armature(armature_name)
 
         return {'FINISHED'}
+
+class AddConstraintOperator(bpy.types.Operator):
+    bl_idname = "object.add_constraint"
+    bl_label = "AddConstraint"
+
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context):
+        return hasattr(context.scene, "armature_select_props")
+
+    def execute(self, context: bpy.types.Context):
+        addon_props = context.scene.armature_select_props
+        target_armature = addon_props.target_armature
+        source_armature = addon_props.source_armature
+        if not target_armature or not source_armature:
+            self.report({'ERROR'}, "Please select both target and source armatures.")
+            return {'CANCELLED'}
+        if target_armature == source_armature:
+            self.report({'ERROR'}, "Target and Source armatures cannot be the same.")
+            return {'CANCELLED'}
+        print(f"Target Armature: {target_armature.name}")
+        print(f"Source Armature: {source_armature.name}")
+        
+        constraints_added_count = 0
+        for target_bone in target_armature.pose.bones:
+            if target_bone.name in source_armature.pose.bones:
+                constraint = target_bone.constraints.new(type='COPY_TRANSFORMS')
+                constraint.target = source_armature
+                constraint.subtarget = target_bone.name
+                constraints_added_count += 1
+        self.report({'INFO'}, f"Added {constraints_added_count} constraints to '{target_armature.name}'.")
+        
+        return {'FINISHED'}
+
+class DeleteConstraintOperator(bpy.types.Operator):
+    bl_idname = "object.delete_constraint"
+    bl_label = "DeleteConstraint"
+
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context):
+        return hasattr(context.scene, "armature_select_props")
+
+    def execute(self, context: bpy.types.Context):
+        addon_props = context.scene.armature_select_props
+        target_armature = addon_props.target_armature
+        if not target_armature:
+            self.report({'ERROR'}, "Please select a target armature.")
+            return {'CANCELLED'}
+        constraints_removed_count = 0
+        for bone in target_armature.pose.bones:
+            for constraint in list(bone.constraints):
+                bone.constraints.remove(constraint)
+                constraints_removed_count += 1
+        self.report({'INFO'}, f"Removed {constraints_removed_count} constraints from '{target_armature.name}'.")
+        return {'FINISHED'}
