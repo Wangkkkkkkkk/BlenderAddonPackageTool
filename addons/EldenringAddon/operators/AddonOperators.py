@@ -1,6 +1,8 @@
 import bpy
 import os
 
+from bpy.ops import scene
+
 from ..config import __addon_name__
 from ..preference.AddonPreferences import ExampleAddonPreferences
 
@@ -138,13 +140,43 @@ class RefineArmatureOperator(bpy.types.Operator):
         # set keying set to whole character
         # we have all bones selected
         scene = bpy.context.scene
-        for frame in range(0, 1):
+
+        target_armature = bpy.data.objects[target]
+        if target_armature.animation_data and target_armature.animation_data.action:
+            target_action = target_armature.animation_data.action
+            start_frame = int(target_action.frame_range[0])
+            end_frame = int(target_action.frame_range[1])
+
+            # 动态设置场景的帧范围以匹配当前动画
+            scene.frame_end = end_frame + 1
+        else:
+            return False
+
+        # set source armature frame 0 to rest pose
+        source_armature = bpy.data.objects[source]
+        bpy.context.view_layer.objects.active = source_armature
+        bpy.ops.object.mode_set(mode='POSE')
+        for pbone in source_armature.pose.bones:
+            pbone.location = (0, 0, 0)
+            pbone.rotation_quaternion = (1, 0, 0, 0)
+            pbone.rotation_euler = (0, 0, 0)
+            pbone.scale = (1, 1, 1)
+        scene.frame_current = 0
+        scene.frame_set(0)
+        for pbone in source_armature.pose.bones:
+            pbone.keyframe_insert(data_path="location", frame=0)
+            pbone.keyframe_insert(data_path="rotation_quaternion", frame=0)
+            pbone.keyframe_insert(data_path="rotation_euler", frame=0)
+            pbone.keyframe_insert(data_path="scale", frame=0)
+
+        for frame in range(1, end_frame):
             scene.frame_current = frame
             scene.frame_set(scene.frame_current)
             # apply visual transfrom to pose Ctrl+A
             bpy.ops.pose.visual_transform_apply()
             # insert all keyframes -> press I
             bpy.ops.anim.keyframe_insert_menu(type='__ACTIVE__')
+        return True
 
     def select_all_bones(self, source):
         ob = bpy.data.objects[source]
@@ -241,7 +273,7 @@ class RefineArmatureOperator(bpy.types.Operator):
             bake_anim_use_all_bones=True,  # 导出所有骨骼的动画
             bake_anim_use_nla_strips=False,  # 禁用NLA strips（直接导出Action）
             bake_anim_use_all_actions=False,  # 仅导出当前Action
-            bake_anim_force_startend_keying=False,  # 强制使用时间轴范围
+            bake_anim_force_startend_keying=True,  # 强制使用时间轴范围
             bake_anim_step=1.0,  # 每帧采样
 
             add_leaf_bones=False,  # 不添加叶子骨骼
@@ -275,6 +307,14 @@ class RefineArmatureOperator(bpy.types.Operator):
             if "Skeleton" in input_name:
                 continue
 
+            # remove skeleton animation
+            skeleton_armature = bpy.data.objects[skeleton_name]
+            bpy.context.view_layer.objects.active = skeleton_armature
+            bpy.ops.object.mode_set(mode='OBJECT')
+            if skeleton_armature.animation_data:
+                skeleton_armature.animation_data.action = None
+                skeleton_armature.animation_data_clear()
+
             # import armature fbx
             armature_name = input_name.split(".")[0]
             fbx_file = os.path.join(input_filepath, input_name)
@@ -284,17 +324,19 @@ class RefineArmatureOperator(bpy.types.Operator):
             ks = bpy.data.scenes["Scene"].keying_sets_all
             ks.active = ks['Whole Character']
 
-            ob = bpy.data.objects[armature_name]
-            bpy.context.view_layer.objects.active = ob
+            bpy.context.view_layer.objects.active = skeleton_armature
             bpy.ops.object.mode_set(mode='POSE')
-
-            self.add_constraints(armature_name, skeleton_name)
-            self.apply_animation(armature_name, skeleton_name)
+            self.add_constraints(skeleton_name, armature_name)
+            apply_animation_success = self.apply_animation(skeleton_name, armature_name)
+            if not apply_animation_success:
+                self.del_constraints()
+                self.remove_armature(armature_name)
+                continue
             self.del_constraints()
 
             # save fbx
             output_fbx_path = os.path.join(output_filepath, input_name)
-            self.export_fbx_skeleton(output_fbx_path, armature_name)
+            self.export_fbx_skeleton(output_fbx_path, skeleton_name)
 
             self.remove_armature(armature_name)
 
