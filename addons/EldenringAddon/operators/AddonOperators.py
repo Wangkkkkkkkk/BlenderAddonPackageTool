@@ -146,9 +146,6 @@ class RefineArmatureOperator(bpy.types.Operator):
             target_action = target_armature.animation_data.action
             start_frame = int(target_action.frame_range[0])
             end_frame = int(target_action.frame_range[1])
-
-            # 动态设置场景的帧范围以匹配当前动画
-            scene.frame_end = end_frame + 1
         else:
             return False
 
@@ -273,7 +270,7 @@ class RefineArmatureOperator(bpy.types.Operator):
             bake_anim_use_all_bones=True,  # 导出所有骨骼的动画
             bake_anim_use_nla_strips=False,  # 禁用NLA strips（直接导出Action）
             bake_anim_use_all_actions=False,  # 仅导出当前Action
-            bake_anim_force_startend_keying=True,  # 强制使用时间轴范围
+            bake_anim_force_startend_keying=False,  # 强制使用时间轴范围
             bake_anim_step=1.0,  # 每帧采样
 
             add_leaf_bones=False,  # 不添加叶子骨骼
@@ -294,6 +291,9 @@ class RefineArmatureOperator(bpy.types.Operator):
         output_filepath = addon_prefs.refine_armature_output_filepath
         print("Glb2fbxOperator== input_filepath:", input_filepath)
         print("Glb2fbxOperator== output_filepath:", output_filepath)
+
+        scene = bpy.context.scene
+        scene.frame_start = 0
 
         # import skeleton
         skeleton_path = os.path.join(input_filepath, "Skeleton.fbx")
