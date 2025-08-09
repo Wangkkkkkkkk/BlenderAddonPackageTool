@@ -3,6 +3,8 @@ import bmesh
 from mathutils import Vector, kdtree
 from mathutils.geometry import intersect_point_line
 
+from math import radians
+
 from ..config import __addon_name__
 from ..preference.AddonPreferences import ExampleAddonPreferences
 
@@ -233,4 +235,92 @@ class AssignWeightOperator(bpy.types.Operator):
                     vert[deform_layer][vg.index] = max(0.0, min(1.0, w / total))
 
         bmesh.update_edit_mesh(obj.data)
+        return {'FINISHED'}
+
+
+class AddCylinderColliderOperator(bpy.types.Operator):
+    '''ExampleAddon'''
+    bl_idname = "object.add_cylinder_collider"
+    bl_label = "AddCylinderCollider"
+
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context):
+        scene = context.scene
+        props = getattr(scene, "armature_select_props", None)
+        if not props:
+            return False
+        arm = getattr(props, "Select_armature", None)
+        if not arm or arm.type != 'ARMATURE' or not arm.data:
+            return False
+        bone_name = getattr(props, "Select_parent_bone", None)
+        if not bone_name or bone_name == 'NONE':
+            return False
+        return bone_name in arm.data.bones
+
+    def execute(self, context: bpy.types.Context):
+        scene = context.scene
+        props = scene.armature_select_props
+        # 获取选中的骨架对象和父骨
+        arm_obj = getattr(props, "Select_armature", None)
+        if not arm_obj or arm_obj.type != 'ARMATURE':
+            self.report({'ERROR'}, "No valid target armature selected!")
+            return {'CANCELLED'}
+        bone_name = getattr(props, "Select_parent_bone", None)
+        if not bone_name or bone_name not in arm_obj.data.bones:
+            self.report({'ERROR'}, "No valid parent bone selected!")
+            return {'CANCELLED'}
+        # 计算骨头长度（世界空间）
+        b = arm_obj.data.bones[bone_name]
+        M = arm_obj.matrix_world
+        head_w = M @ b.head_local
+        tail_w = M @ b.tail_local
+        length = (tail_w - head_w).length
+        if length <= 1e-6:
+            self.report({'ERROR'}, "Bone length is zero")
+            return {'CANCELLED'}
+        # 创建圆柱（默认原点在几何中心，轴向为局部+Z）
+        radius = 0.075
+        depth = length
+        bpy.ops.mesh.primitive_cylinder_add(
+            vertices=16, radius=radius, depth=depth,
+            enter_editmode=False, align='WORLD', location=(0, 0, 0)
+        )
+        cyl = context.active_object
+        cyl.name = f"collider_{bone_name}"
+        # 将几何整体下移 depth/2，使“顶面中心”成为对象原点
+        bm = bmesh.new()
+        bm.from_mesh(cyl.data)
+        dz = depth * 0.5
+        for v in bm.verts:
+            v.co.z -= dz
+        bm.to_mesh(cyl.data)
+        bm.free()
+        cyl.data.update()
+        # 预设一个旋转偏移：让圆柱长轴（原本+Z）经偏移后适配骨轴（骨通常沿 +Y）
+        # 旋转 +90° about X: +Z -> -Y，且因为我们把几何沿 -Z 延展，-Z -> +Y（与骨方向一致）
+        cyl.rotation_euler = (radians(90.0), 0.0, 0.0)
+        # 添加 Copy Location 约束（位置对齐到骨头）
+        c_loc = cyl.constraints.new('COPY_LOCATION')
+        c_loc.target = arm_obj
+        c_loc.subtarget = bone_name
+        c_loc.target_space = 'WORLD'
+        c_loc.owner_space = 'WORLD'
+        # 添加 Copy Rotation 约束（旋转对齐到骨头），保留上面的旋转作为偏移
+        c_rot = cyl.constraints.new('COPY_ROTATION')
+        c_rot.target = arm_obj
+        c_rot.subtarget = bone_name
+        c_rot.target_space = 'WORLD'
+        c_rot.owner_space = 'WORLD'
+        c_rot.use_offset = True  # 保留 cyl.rotation_euler 作为偏移，使长轴对齐骨轴
+        # --- 添加碰撞物理（供布料/头发等使用） ---
+        view_layer = context.view_layer
+        prev_active = view_layer.objects.active
+        view_layer.objects.active = cyl
+        cyl.select_set(True)
+        try:
+            bpy.ops.object.modifier_add(type='COLLISION')
+        except Exception:
+            pass  # 已存在时忽略
         return {'FINISHED'}

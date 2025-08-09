@@ -7,7 +7,8 @@ from ..operators.AddonOperators import (
     GetSelectVertexOperator,
     CancelSelectVertexOperator,
     GenerateBonesOperator,
-    AssignWeightOperator
+    AssignWeightOperator,
+    AddCylinderColliderOperator
 )
 from ....common.i18n.i18n import i18n
 from ....common.types.framework import reg_order
@@ -96,6 +97,19 @@ class ExampleAddonPanel(BasePanel, bpy.types.Panel):
         assign_weight_box_row.label(text="Target Armature:")
         assign_weight_box_row.prop(scene, "assign_weight_armature", text="", icon='ARMATURE_DATA')
         assign_weight_box.operator(AssignWeightOperator.bl_idname)
+
+        # generate collision cylinder
+        collider_box = layout.box()
+        collider_box.label(text="Step 4: Add cylinder collider to selected bone")
+        addon_props = scene.armature_select_props
+        row = collider_box.row()
+        row.label(text="Armature:")
+        row.prop(addon_props, "Select_armature", text="", icon='ARMATURE_DATA')
+        row = collider_box.row()
+        row.enabled = bool(getattr(addon_props, "Select_armature", None))
+        row.label(text="Bone:")
+        row.prop(addon_props, "Select_parent_bone", text="", icon='BONE_DATA')
+        collider_box.operator(AddCylinderColliderOperator.bl_idname)
 
     @classmethod
     def poll(cls, context: bpy.types.Context):
